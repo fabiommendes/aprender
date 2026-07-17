@@ -15,7 +15,7 @@ type JSON = JSONAtom | dict[str, Any] | list[Any]
 type QuestionId = str
 type StudentId = str
 type Role = Literal["response", "grade"]
-type QuestionType = Literal[
+QuestionType = Literal[
     "multiple-choice",
     "multiple-selection",
     "association",

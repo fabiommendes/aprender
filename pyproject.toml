@@ -1,7 +1,7 @@
 [project]
 name = "aprender"
 version = "0.1.0"
-description = "CLI tool to parse aprender.unb.br, a Moodle instance at the University of Brasília"
+description = "CLI tool to parse aprender.unb.br student responses and grades. Aprender is a Moodle instance at the University of Brasília."
 readme = "README.md"
 authors = [
     { name = "Fábio Macêdo Mendes", email = "fabiomacedomendes@gmail.com" },
@@ -10,6 +10,7 @@ requires-python = ">=3.13"
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "pydantic>=2.13.4",
+    "pyyaml>=6.0.3",
     "rich>=15.0.0",
     "ruamel-yaml>=0.19.1",
     "typer>=0.25.1",
@@ -26,3 +27,8 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name = "aprender"
 module-root = "."
+
+[tool.ruff.lint]
+ignore = [
+    "E731", # Do not use lambda expressions
+]

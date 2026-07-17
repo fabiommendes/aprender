@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Iterable, assert_never, cast
 
 from .types import JSON, Cell, QuestionId, QuestionType
+from .yaml import dumps
 
 type StructuredAnswer = str | list[str] | dict[str, str | None] | None
 
@@ -21,7 +22,7 @@ ESSAY_MIN_UNIQUE_FRACTION_THRESHOLD = 0.75
 
 CLOZE_REGEX: re.Pattern = re.compile(r"\{(?P<choice>[^{}]*)\}\s*|(?P<invalid>.+)")
 MULTIPLE_SELECTION_SEPARATOR = re.compile(r"\n\s*;\s?")
-ASSOCIATION_ITEM = re.compile(r"(?P<lhs>.+?)\n\s*->\s*(?P<rhs>.+)")
+ASSOCIATION_ITEM = re.compile(r"(?P<lhs>(.|\n)+?)(\n\ *-> *(?P<rhs>.+))?")
 
 EMPTY_ASSOCIATION = "nenhuma opção correspondente"
 
@@ -277,14 +278,11 @@ def normalize_response(content: Cell, question_type: QuestionType) -> Structured
                 return associations
 
             for item in content.split("; "):
-                match = ASSOCIATION_ITEM.match(item)
-                if match:
-                    key = match.group("lhs").strip()
-                    value = match.group("rhs").strip()
-                    associations[key] = value if value != EMPTY_ASSOCIATION else None
-                else:
-                    msg = "not an association response: {!r}".format(content)
-                    raise ValueError(msg)
+                key, _, rhs = item.partition("\n -> ")
+                if key and rhs:
+                    key = key.strip().replace("\n", "<br>")
+                    value = rhs.strip().replace("\n", "<br>")
+                    associations[key] = value
             return associations
 
         case _:
@@ -296,10 +294,8 @@ def render_structured(content: StructuredAnswer) -> str:
         return ""
     elif isinstance(content, str):
         return content
-    elif isinstance(content, list):
-        return "; ".join(content)
-    elif isinstance(content, dict):
-        return "; ".join(f"{k} -> {v}" for k, v in content.items())
+    elif isinstance(content, (list, dict)):
+        return dumps(content)
     else:
         raise TypeError(f"Unexpected type, got {type(content).__name__}")
 
@@ -360,3 +356,7 @@ def question_from_responses(
             assert_never(question_type)
 
     return base
+
+
+def indent(src: str) -> str:
+    return "\n".join("    " + line for line in src.splitlines())

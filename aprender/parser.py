@@ -59,6 +59,7 @@ def parse_html(
     data: BeautifulSoup | str,
     id: str | None = None,
     question_types: dict[QuestionId, QuestionType] = {},
+    email_id: bool = False,
 ) -> Parsed:
     """
     Parse the given BeautifulSoup object to extract course, exam, and responses information.
@@ -76,7 +77,7 @@ def parse_html(
         case "response":
             table, json = parse_submissions(soup, question_types)
         case "grade":
-            table = parse_grades(soup)
+            table = parse_grades(soup, email_id=email_id)
         case "roster":
             table = parse_roster(soup)
         case other:
@@ -152,17 +153,20 @@ def parse_submissions(
     return parsed, json
 
 
-def parse_grades(soup: BeautifulSoup) -> Table:
+def parse_grades(soup: BeautifulSoup, email_id: bool = False) -> Table:
     """
     Parse the grades table from the given BeautifulSoup object.
     """
+    if not email_id:
+        id_getter = lambda row: v.validate_student_id(row["email"])
+    else:
+        id_getter = lambda x: x
 
     data = parse_table(
         soup,
         skip_last_row=True,
         colmap={
-            "id": lambda row: v.validate_student_id(row["email"]),
-            "email": lambda row: row["email"],
+            "id": id_getter,
         },
         extramap=v.validate_grade,
     )

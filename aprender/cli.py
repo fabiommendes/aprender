@@ -5,16 +5,15 @@ import sys
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Annotated, assert_never, cast, get_args
+from typing import Annotated, Any, assert_never, cast, get_args
 
 import rich
 from typer import Argument, Option, Typer
 
 from .types import JSON, QuestionId, QuestionType
-from .yaml import dump_yaml
+from .yaml import dump
 
 VALID_QUESTION_TYPES: set[QuestionType] = set(get_args(QuestionType))
-
 
 app = Typer()
 
@@ -63,7 +62,7 @@ def load(
         ),
     ] = False,
     question_type_specs: Annotated[
-        list[str],
+        list[str] | None,
         Option(
             ...,
             "--type",
@@ -71,8 +70,25 @@ def load(
             metavar="TYPE=QUESTIONS",
             help="Specify question types in the format TYPE=QUESTION for each question (e.g., -t text=q1,q2)",
         ),
-    ] = [],
-):
+    ] = None,
+    email_id: Annotated[
+        bool,
+        Option(
+            ...,
+            "--email-id",
+            help="Use email as the student ID",
+        ),
+    ] = False,
+    suffix: Annotated[
+        str | None,
+        Option(
+            ...,
+            "--suffix",
+            "-s",
+            help="Suffix to append to output files (e.g., -s _v2)",
+        ),
+    ] = None,
+) -> None:
     """
     Load Moodle-generated HTML tables describing students' responses and grades, and convert them to YAML format.
     """
@@ -82,21 +98,30 @@ def load(
         raise ValueError(f"{path} is not a file")
 
     question_types = validate_question_type_specs(question_type_specs)
-    parsed = parse_html(path.read_text(), id=id, question_types=question_types)
+    parsed = parse_html(
+        path.read_text(),
+        id=id,
+        question_types=question_types,
+        email_id=email_id,
+    )
     extra: Path | None = None
+    if suffix:
+        suffix = f"-{suffix.removeprefix('-')}"
+    else:
+        suffix = ""
 
     match parsed.role:
         case "response":
-            main = Path("submissions.csv")
-            extra = Path("questions.yaml")
+            main = Path(f"submissions{suffix}.csv")
+            extra = Path(f"conf{suffix}.yaml")
         case "grade":
-            main = Path("grades.csv")
+            main = Path(f"grades{suffix}.csv")
         case "roster":
-            main = Path("roster.csv")
+            main = Path(f"roster{suffix}.csv")
         case other:
             assert_never(other)
 
-    if not dry_run and not force and (main.exists() or extra and extra.exists()):
+    if not dry_run and not force and main.exists():
         msg = "Output files already exist. Use --force/-f to overwrite"
         rich.print(f"[red bold]Error[/]: {msg}", file=sys.stderr)
         raise exit(1)
@@ -110,7 +135,10 @@ def load(
     if extra and parsed.json:
         if Path("grades.csv").exists():
             estimate_grades(parsed.json, Path("grades.csv"))
-        dump_yaml(parsed.json, sys.stdout if dry_run else extra.open("w"))
+        questions: Any = parsed.json
+        data = {"questions": [{"id": qid, **qdata} for qid, qdata in questions.items()]}
+        if not extra.exists():
+            dump(data, sys.stdout if dry_run else extra.open("w"))
 
     if not dry_run and remove:
         path.unlink()
@@ -127,7 +155,7 @@ def _debug(*args, **kwargs):
 
 
 def validate_question_type_specs(
-    question_type_specs: list[str],
+    question_type_specs: list[str] | None,
 ) -> dict[QuestionId, QuestionType]:
     """
     Validate the --type option specifications and return a mapping of question
@@ -135,22 +163,23 @@ def validate_question_type_specs(
     """
 
     question_types: dict[QuestionId, QuestionType] = {}
-    if question_type_specs:
-        for spec in question_type_specs:
-            try:
-                question_type, sep, question_ids = spec.partition("=")
-                if sep != "=":
-                    rich.print(f"[red]Invalid question type format: {spec}[/red]")
-                    exit(1)
-                elif question_type not in VALID_QUESTION_TYPES:
-                    msg = f"[red]Invalid question type: {question_type} (must be one of {', '.join(VALID_QUESTION_TYPES)})[/red]"
-                    rich.print(msg)
-                    exit(1)
-                for question_id in question_ids.split(","):
-                    question_types[question_id] = cast(QuestionType, question_type)
+    for spec in question_type_specs or []:
+        try:
+            question_type, sep, question_ids = spec.partition("=")
+            if sep != "=":
+                rich.print(f"[red]Invalid question type format:[/] {spec}")
+                rich.print("[b]Expected TYPE=QUESTION_ID1,QUESTION_ID2,...[/]")
+                exit(1)
+            elif question_type not in VALID_QUESTION_TYPES:
+                msg = f"[red]Invalid question type: {question_type} (must be one of {', '.join(VALID_QUESTION_TYPES)})[/red]"
+                rich.print(msg)
+                exit(1)
 
-            except ValueError:
-                raise SystemExit(f"Invalid question type format: {spec}")
+            for question_id in question_ids.split(","):
+                question_types[question_id] = cast(QuestionType, question_type)
+
+        except ValueError:
+            raise SystemExit(f"Invalid question type format: {spec}")
     return question_types
 
 
@@ -175,7 +204,7 @@ def estimate_grades(json: dict[str, JSON], grades_csv_path: Path) -> None:
 
         for row in reader:
             del row["id"]
-            del row["email"]
+            row.pop("email", None)
 
             for id, value in row.items():
                 try:
