@@ -1,36 +1,29 @@
+# $schema=https://www.schemastore.org/github-workflow.json
 on:
   release:
     types:
       - created
-      - assigned
-      - mainented
-      - opened
-      - closed
-      - synchronized
-      - labeled
   push:
     tags:
-      - "br*.*.*"
+      - "v*.*.*"
 
 name: release
 
 jobs:
   pypi-publish:
     name: upload release to PyPI
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write
-                read
-                ActionScript 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
-          enable-cache: false
+          enable-cache: true
 
       - name: Set up Python
         run: uv python install
